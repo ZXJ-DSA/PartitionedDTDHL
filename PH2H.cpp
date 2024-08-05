@@ -14,12 +14,14 @@ void Graph::PH2HIndexConstruct(){
 
     /// Read order and partitions
     string orderfile=graphfile+".orderP";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_order";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    orderfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_order";
+//    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE";
+//    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    orderfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
     ReadOrder(orderfile);
 
     string partitionfile=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+    partitionfile=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
     GraphPartitionRead(partitionfile);//read partitions
 
 //    vSm.reserve(node_num);
@@ -45,6 +47,7 @@ void Graph::PH2HIndexConstruct(){
     /// Overlay graph construction
     tt.start();
     Construct_OverlayGraph(true);
+//    Construct_OverlayGraphNoAllPair(true);
     tt.stop();
     runT2 = tt.GetRuntime();
     cout<<"Overlay graph construction time: "<<runT2<<" s."<< endl;
@@ -192,7 +195,7 @@ void Graph::PH2HVertexOrdering(int type){
 }
 void Graph::OrderingAssemblyMDEBoundaryFirst(int pNum){
     string filename=graphfile+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
-
+    filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(pNum)+"/vertex_orderMDE2";
     ofstream OF(filename,ios::out);
     if(!OF.is_open()){
         cout<<"Cannot open file "<<filename<<endl;
@@ -439,9 +442,10 @@ void Graph::SketchGraphBuild(){
     bool flag_minus = false;
 
     string filename=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+    filename=sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(partiNum);
     ifstream IF1(filename+"/subgraph_vertex");
     if(!IF1){
-        cout<<"Cannot open file "<<"subgraph_vertex"<<endl;
+        cout<<"Cannot open file "<<filename+"/subgraph_vertex"<<endl;
         exit(1);
     }
 
@@ -1246,6 +1250,7 @@ void Graph::EffiCheck(string filename,int runtimes){
         IF>>ID1>>ID2;
         ODpair.push_back(make_pair(ID1, ID2));
     }
+    IF.close();
     if(runtimes > num){
         runtimes = num;
     }
@@ -1290,7 +1295,7 @@ void Graph::DFSTree(vector<int>& tNodes, int id){
 
 /// Index Maintenance
 
-void Graph::IndexMaintenance(int updateType, int updateBatch, bool ifBatch, int batchSize) {
+void Graph::IndexMaintenance(int updateType, bool ifBatch, int batchNumber, int batchSize) {
     cout<<"Index update test..."<<endl;
     // read updates
     string file = graphfile + ".update";
@@ -1299,56 +1304,85 @@ void Graph::IndexMaintenance(int updateType, int updateBatch, bool ifBatch, int 
     vector<pair<pair<int,int>,pair<int,int>>> wBatch;
     int ID1, ID2, oldW, newW;
     srand (0);
-    cout<<"Update batch: "<<updateBatch<<" ; Batch size: "<<batchSize<<endl;
+    cout<<"Update batch number: "<<batchNumber<<" ; Batch size: "<<batchSize<<endl;
     vector<pair<pair<int,int>,int>> updateData;
     ReadUpdate(file, updateData);
     Timer tt;
     double runT1=0, runT2 = 0;
+    map<pair<int,int>,int> uEdges;
     switch (updateType) {
         case 0:{
             break;
         }
         case 1:{
             //Decrease update
-            cout<<"Update type: Decrease"<<endl;
+            cout<<"\nUpdate type: Decrease"<<endl;
             Graph g2=*this;
             if(ifBatch){//for batch update
-                if(updateBatch*batchSize>updateData.size()){
-                    updateBatch=floor(updateData.size()/batchSize);
+                if(batchNumber*batchSize>updateData.size()){
+                    batchNumber=floor(updateData.size()/batchSize);
                 }
                 int update_i=0;
                 vector<pair<pair<int,int>,pair<int,int>>> wBatch;
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     wBatch.clear();
+                    uEdges.clear();
                     for(int i=0;i<batchSize;++i){
                         ID1 = updateData[update_i].first.first;
                         ID2 = updateData[update_i].first.second;
-                        oldW = updateData[update_i].second;
-                        newW=oldW*0.5;
+
+                        if(ID1>ID2){
+                            int temp=ID1;
+                            ID1=ID2, ID2=temp;
+                        }
+                        bool ifFind=false;
+                        for(auto it=Neighbor[ID1].begin();it!=Neighbor[ID1].end();++it){
+                            if(it->first==ID2){
+                                ifFind=true;
+                                oldW=it->second;
+                                newW=0.5*oldW;
+                                break;
+                            }
+                        }
+
+                        if(uEdges.find(make_pair(ID1,ID2))==uEdges.end()){//if not found
+                            uEdges.insert({make_pair(ID1,ID2),newW});
+                        }else{
+                            cout<<"Wrong. Find. "<<ID1<<" "<<ID2<<" "<<newW<<" "<<uEdges[make_pair(ID1,ID2)]<<" "<<oldW <<endl;
+                            exit(1);
+                        }
+                        if(!ifFind){
+                            cout<<"Wrong edge update. "<<ID1<<" "<<ID2<<" "<<endl; exit(1);
+                        }
+
+//                        oldW = updateData[update_i].second;
+//                        newW=oldW*0.5;
                         if(newW < 1) {
                             cout<<"New edge weight is not positive! "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
                             exit(1);
                         }
-                        if(ifDebug){
-                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
-                        }
+//                        if(ifDebug){
+//                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+//                        }
                         wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
                         ++update_i;
                     }
-
+                    cout<<"Batch "<<u<<". "<<wBatch.size()<<endl;
                     tt.start();
                     g2.DecreaseBatch(wBatch);
 //                    DecreaseBatch(wBatch);
                     tt.stop();
                     runT1 += tt.GetRuntime();
+                    cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
                     if(ifDebug){
-                        CorrectnessCheck(100);
+                        g2.CorrectnessCheck(100);
+//                        CorrectnessCheck(100);
                     }
                 }
-                cout<<"Average Decrease update Time: "<<runT1/(updateBatch*batchSize)<<" s.\n"<<endl;
+                cout<<"Average Decrease update Time: "<<runT1/batchNumber<<" s; "<<runT1/(batchNumber*batchSize)<<" s."<<endl;
             }
             else {//for single-edge update
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     ID1 = updateData[u].first.first;
                     ID2 = updateData[u].first.second;
                     oldW = updateData[u].second;
@@ -1362,56 +1396,83 @@ void Graph::IndexMaintenance(int updateType, int updateBatch, bool ifBatch, int 
                     }
                     tt.start();
                     g2.DecreaseSingle(ID1,ID2,oldW,newW);
+//                    DecreaseSingle(ID1,ID2,oldW,newW);
                     tt.stop();
                     runT1 += tt.GetRuntime();
                     if(ifDebug){
-                        CorrectnessCheck(100);
+                        g2.CorrectnessCheck(100);
                     }
 
                 }
 
-                cout<<"Average Decrease update Time: "<<runT1/updateBatch<<" s.\n"<<endl;
+                cout<<"Average Decrease update Time: "<<runT1/batchNumber<<" s."<<endl;
             }
 
 //            break;
         }
         case 2:{
             //Increase update
-            cout<<"Update type: Increase"<<endl;
+            cout<<"\nUpdate type: Increase"<<endl;
             if(ifBatch){//for batch update
-                if(updateBatch*batchSize>updateData.size()){
-                    updateBatch=floor(updateData.size()/batchSize);
+                if(batchNumber*batchSize>updateData.size()){
+                    batchNumber=floor(updateData.size()/batchSize);
                 }
                 int update_i=0;
                 vector<pair<pair<int,int>,pair<int,int>>> wBatch;
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     wBatch.clear();
+                    uEdges.clear();
                     for(int i=0;i<batchSize;++i){
                         update_i=u*batchSize+i;
                         ID1 = updateData[update_i].first.first;
                         ID2 = updateData[update_i].first.second;
-                        oldW = updateData[update_i].second;
-                        newW=oldW*1.5;
-                        if(ifDebug){
-                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+                        if(ID1>ID2){
+                            int temp=ID1;
+                            ID1=ID2, ID2=temp;
                         }
+                        bool ifFind=false;
+                        for(auto it=Neighbor[ID1].begin();it!=Neighbor[ID1].end();++it){
+                            if(it->first==ID2){
+                                ifFind=true;
+                                oldW=it->second;
+                                newW=2*oldW;
+                                break;
+                            }
+                        }
+
+                        if(uEdges.find(make_pair(ID1,ID2))==uEdges.end()){//if not found
+                            uEdges.insert({make_pair(ID1,ID2),newW});
+                        }else{
+                            cout<<"Wrong. Find. "<<ID1<<" "<<ID2<<" "<<newW<<" "<<uEdges[make_pair(ID1,ID2)]<<" "<<oldW <<endl;
+                            exit(1);
+                        }
+                        if(!ifFind){
+                            cout<<"Wrong edge update. "<<ID1<<" "<<ID2<<" "<<endl; exit(1);
+                        }
+
+//                        oldW = updateData[update_i].second;
+//                        newW=oldW*1.5;
+//                        if(ifDebug){
+//                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+//                        }
                         wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
 //                        ++update_i;
                     }
-
+                    cout<<"Batch "<<u<<". "<<wBatch.size()<<endl;
                     tt.start();
                     IncreaseBatch(wBatch);
                     tt.stop();
                     runT2 += tt.GetRuntime();
+                    cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
                     if(ifDebug){
                         CorrectnessCheck(100);
                     }
 
                 }
-                cout<<"Average Increase update Time: "<<runT2/(updateBatch*batchSize)<<" s.\n"<<endl;
+                cout<<"Average Increase update Time: "<<runT2/batchNumber<<" s; "<<runT2/(batchNumber*batchSize)<<" s."<<endl;
             }
             else {//for single-edge update
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     ID1 = updateData[u].first.first;
                     ID2 = updateData[u].first.second;
                     oldW = updateData[u].second;
@@ -1430,7 +1491,7 @@ void Graph::IndexMaintenance(int updateType, int updateBatch, bool ifBatch, int 
 
                 }
 
-                cout<<"Average Increase update Time: "<<runT2/updateBatch<<" s.\n"<<endl;
+                cout<<"Average Increase update Time: "<<runT2/batchNumber<<" s.\n"<<endl;
             }
 
             break;
@@ -1476,22 +1537,24 @@ void Graph::DecreaseBatch(vector<pair<pair<int, int>, pair<int, int>>> &wBatch) 
     }
 
     if(!partiBatch.empty()){
-        if(partiBatch.size()>threadnum){
-            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
-        }
-        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+//        if(partiBatch.size()>threadnum){
+//            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+//        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
         boost::thread_group thread;
         for(auto it=partiBatch.begin();it!=partiBatch.end();++it){
             int pid=it->first;
             thread.add_thread(new boost::thread(&Graph::DecreasePartiBatchUpdateCheck, this, pid, boost::ref(it->second), boost::ref(overlayBatch) ));
+//            DecreasePartiBatchUpdateCheck(pid,it->second,overlayBatch);
         }
         thread.join_all();
     }
-
+//    cout<<"update overlay."<<endl;
     DecreaseOverlayBatch(overlayBatch,NeighborsOverlay,Tree,rank,heightMax);
 
-    // repair the partition index
+//     repair the partition index
     if(algoQuery==1){
+//        cout<<"Repair post index"<<endl;
         Repair_PartiIndex(true, false, partiBatch);
     }
 }
@@ -1560,10 +1623,10 @@ void Graph::IncreaseBatch(vector<pair<pair<int, int>, pair<int, int>>> &wBatch) 
     }
 
     if(!partiBatch.empty()){
-        if(partiBatch.size()>threadnum){
-            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
-        }
-        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
+//        if(partiBatch.size()>threadnum){
+//            cout<<"partiBatch is larger than thread number! "<<partiBatch.size()<<" "<<threadnum<< endl;
+//        }
+//        cout<<"Update Partition number: "<<partiBatch.size()<<endl;
         if(algoQuery==1){
 //            Trees=TreesNo;
 //            for(int pi=0;pi<ifRepaired.size();++pi){
@@ -1586,6 +1649,7 @@ void Graph::IncreaseBatch(vector<pair<pair<int, int>, pair<int, int>>> &wBatch) 
     // repair the partition index
     if(algoQuery==1){
 //        Trees=TreesNo;
+//        cout<<"Post-boundary update."<<endl;
         Repair_PartiIndex(true,true, partiBatch);
 //        Repair_PartiIndex(false,true, partiBatch);
     }

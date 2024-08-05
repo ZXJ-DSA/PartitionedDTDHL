@@ -8,7 +8,7 @@
 
 int main(int argc, char** argv){
 
-    if( argc < 4 || argc > 11){//
+    if( argc < 4 || argc > 12){//
         printf("usage:\n<arg1> source path, e.g. /export/project/xzhouby\n");
         printf("<arg2> name of dataset, e.g. NY\n");
         printf("<arg3> partition number, e.g. 64\n");
@@ -16,9 +16,10 @@ int main(int argc, char** argv){
         printf("<arg5> (optional) query strategy, (0: No-boundary; 1: Post-boundary), default: 0\n");
         printf("<arg6> (optional) update type, (0: No Update Test; 1: Decrease; 2: Increase), default: 0\n");
         printf("<arg7> (optional) whether batch update, (0: No; 1: Yes), default: 0\n");
-        printf("<arg8> (optional) batch size, default: 10\n");
-        printf("<arg9> (optional) thread number, default: 15\n");
-        printf("<arg10> (optional) preprocessing task (1: Partitioned MDE Ordering; 2: Partitioned Query Generation)\n");
+        printf("<arg8> (optional) batch number, default: 10\n");
+        printf("<arg9> (optional) batch size, default: 100\n");
+        printf("<arg10> (optional) thread number, default: 15\n");
+        printf("<arg11> (optional) preprocessing task (1: Partitioned MDE Ordering; 2: Partitioned Query Generation)\n");
         exit(0);
     }
 
@@ -30,10 +31,9 @@ int main(int argc, char** argv){
     string algoParti = "NC";
     int updateType = 0;
     int runtimes = 10000;
-    int updateBatch = 10;
-    updateBatch = 1000;
-    updateBatch = 100;
-    int batchSize = 10;
+    runtimes=1000;
+    int batchNumber = 10;
+    int batchSize = 1000;
     bool ifBatch = false;
     int threadNum = 15;
     int preTask=0;
@@ -52,7 +52,7 @@ int main(int argc, char** argv){
         if(argc > 4){
             cout << "argv[4] (Partition Method): " << argv[4] << endl;//partition method
             algoParti = argv[4];
-            if(algoParti != "NC" && algoParti != "MT"){
+            if(algoParti != "NC" && algoParti != "Bubble"){
                 cout<<"Wrong partition method! "<<algoParti<<endl; exit(1);
             }
         }
@@ -70,16 +70,20 @@ int main(int argc, char** argv){
             ifBatch = stoi(argv[7]);
         }
         if(argc > 8){
-            cout << "argv[8] (Batch Size): " << argv[8] << endl;//algorithm for update
-            batchSize = stoi(argv[8]);
+            cout << "argv[8] (Batch Number): " << argv[8] << endl;//batch number
+            batchNumber = stoi(argv[8]);
         }
-        if(argc > 9){
-            cout << "argv[9] (Thread Number): " << argv[9] << endl;//thread number
-            threadNum = stoi(argv[9]);
+        if(argc > 8){
+            cout << "argv[9] (Batch Size): " << argv[9] << endl;//algorithm for update
+            batchSize = stoi(argv[9]);
         }
         if(argc > 10){
-            cout << "argv[10] (Preprocessing Task): " << argv[10] << endl;//preprocessing task
-            preTask = stoi(argv[10]);
+            cout << "argv[10] (Thread Number): " << argv[10] << endl;//thread number
+            threadNum = stoi(argv[10]);
+        }
+        if(argc > 11){
+            cout << "argv[11] (Preprocessing Task): " << argv[11] << endl;//preprocessing task
+            preTask = stoi(argv[11]);
         }
 
     }
@@ -96,6 +100,7 @@ int main(int argc, char** argv){
     Graph g;
     g.threadnum=threadNum;//thread number of parallel computation (can be changed)
     g.graphfile=graphfile;
+    g.sourcePath=DesFile+"/"+dataset+"/";
     g.ifParallel = true;
     g.dataset=dataset;
     g.algoQuery=algoQuery;
@@ -117,20 +122,20 @@ int main(int argc, char** argv){
     cout<<"Thread number: "<<g.threadnum<<endl;
     if(ifBatch){
         cout<<"Test for batch update! Batch size: "<<batchSize<<endl;
-        updateBatch=updateBatch/batchSize;
     }else{
         cout<<"Test for single-edge update!"<<endl;
         batchSize=1;
     }
-
+    string sTemp=g.sourcePath+"partitions/"+dataset+"_"+algoParti+"_"+to_string(g.partiNum);
     if(preTask==1){
-        g.PH2HVertexOrdering(0);//MDE ordering
+//        g.PH2HVertexOrdering(0);//MDE ordering
 //        g.PH2HVertexOrdering(1);//Boundary-first ordering
-//        g.PH2HVertexOrdering(2);//Boundary-first MDE ordering
+        g.PH2HVertexOrdering(2);//Boundary-first MDE ordering
+        exit(0);
     }
     else if(preTask==2){
-        g.QueryGenerationParti(true);//same partition and real-world simulation
-
+        g.QueryGenerationParti(true,sTemp);//same partition and real-world simulation
+        exit(0);
     }
 
 //    g.ReadGraph(graphfile);//
@@ -143,12 +148,13 @@ int main(int argc, char** argv){
     ///Task 2: Query processing
 //    g.CorrectnessCheckCore(100);
     g.CorrectnessCheck(100);
-    g.EffiCheck(ODfile+"Parti",runtimes);//query efficiency test
-    g.EffiCheck(ODfile+"SameParti",runtimes);
-    g.EffiCheck(ODfile+"CrossParti",runtimes);
+    g.EffiCheck(ODfile,runtimes);//query efficiency test
+    g.EffiCheck(sTemp+"/sameParti.query",runtimes);
+    g.EffiCheck(sTemp+"/crossParti.query",runtimes);
+    g.EffiCheck(sTemp+"/mixParti.query",runtimes);
 //    exit(0);
     ///Task 3: Index update
-    g.IndexMaintenance(updateType,updateBatch, ifBatch, batchSize);//index maintenance
+    g.IndexMaintenance(updateType, ifBatch, batchNumber, batchSize);//index maintenance
 //    g.IndexMaintenance(updateFile+"ST",updateType,updateBatch);//same-tree index maintenance
 
     tt0.stop();

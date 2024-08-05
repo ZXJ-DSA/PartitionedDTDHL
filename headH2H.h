@@ -25,7 +25,7 @@
 #include <chrono>
 #include <string>
 #include "Heap.h"
-#include <omp.h>
+//#include <omp.h>
 
 #define INF 99999999
 //typedef unsigned int vertex;
@@ -204,7 +204,7 @@ public:
     void RetrievePath(int ID1, int ID2, vector<int> & prece);
 
     //// For H2H Index Maintenance
-    void IndexMaintenanceH2H(int updateType, int updateBatch, bool ifBatch, int batchSize);
+    void IndexMaintenanceH2H(int updateType, bool ifBatch, int batchNumber, int batchSize);
     void H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch);//decrease
     void H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch);//increase
     void EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, map<int,int>& checkedDis);

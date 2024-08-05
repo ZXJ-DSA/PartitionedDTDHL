@@ -362,6 +362,7 @@ void Graph::makeIndex(){
 	list.push_back(Tree[0].uniqueVertex);
 	Tree[0].pos.clear();
 	Tree[0].pos.push_back(0);
+    Tree[0].vAncestor=list;
 
 	for(int i=0;i<Tree[0].ch.size();i++){
 		makeIndexDFS(Tree[0].ch[i],list);
@@ -546,7 +547,8 @@ void Graph::makeIndexDFS(int p, vector<int>& list){
     }
     Tree[p].pos[NeiNum]=list.size();
 //    Tree[p].dis.push_back(0);//distance to itself
-
+    Tree[p].vAncestor=list;
+    Tree[p].vAncestor.push_back(Tree[p].uniqueVertex);//the last vertex is the tree node
 
     //dis
     for(int i=0;i<NeiNum;i++){
@@ -734,7 +736,7 @@ int Graph::LCAQuery(int _p, int _q){
 
 ///////////////////////////// Index Maintenance ////////////////////////////////
 
-void Graph::IndexMaintenanceH2H(int updateType, int updateBatch, bool ifBatch, int batchSize) {
+void Graph::IndexMaintenanceH2H(int updateType, bool ifBatch, int batchNumber, int batchSize) {
     cout<<"Index update test..."<<endl;
     // read updates
     string file = graphfile + ".update";
@@ -743,57 +745,85 @@ void Graph::IndexMaintenanceH2H(int updateType, int updateBatch, bool ifBatch, i
     vector<pair<pair<int,int>,pair<int,int>>> wBatch;
     int ID1, ID2, oldW, newW;
     srand (0);
-    cout<<"Update batch: "<<updateBatch<<" ; Batch size: "<<batchSize<<endl;
+    cout<<"Update batch number: "<<batchNumber<<" ; Batch size: "<<batchSize<<endl;
     vector<pair<pair<int,int>,int>> updateData;
     ReadUpdate(file, updateData);
     Timer tt;
     double runT1=0, runT2 = 0;
+    map<pair<int,int>,int> uEdges;
     switch (updateType) {
         case 0:{
             break;
         }
         case 1:{
             //Decrease update
-            cout<<"Update type: Decrease"<<endl;
+            cout<<"\nUpdate type: Decrease"<<endl;
 
             if(ifBatch){//for batch update
-                if(updateBatch*batchSize>updateData.size()){
-                    updateBatch=floor(updateData.size()/batchSize);
+                if(batchNumber*batchSize>updateData.size()){
+                    batchNumber=floor(updateData.size()/batchSize);
                 }
                 int update_i=0;
                 vector<pair<pair<int,int>,pair<int,int>>> wBatch;
                 Graph g2=*this;
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     wBatch.clear();
+                    uEdges.clear();
                     for(int i=0;i<batchSize;++i){
                         ID1 = updateData[update_i].first.first;
                         ID2 = updateData[update_i].first.second;
-                        oldW = updateData[update_i].second;
-                        newW=oldW*0.5;
+
+                        if(ID1>ID2){
+                            int temp=ID1;
+                            ID1=ID2, ID2=temp;
+                        }
+                        bool ifFind=false;
+                        for(auto it=Neighbor[ID1].begin();it!=Neighbor[ID1].end();++it){
+                            if(it->first==ID2){
+                                ifFind=true;
+                                oldW=it->second;
+                                newW=0.5*oldW;
+                                break;
+                            }
+                        }
+
+                        if(uEdges.find(make_pair(ID1,ID2))==uEdges.end()){//if not found
+                            uEdges.insert({make_pair(ID1,ID2),newW});
+                        }else{
+                            cout<<"Wrong. Find. "<<ID1<<" "<<ID2<<" "<<newW<<" "<<uEdges[make_pair(ID1,ID2)]<<" "<<oldW <<endl;
+                            exit(1);
+                        }
+                        if(!ifFind){
+                            cout<<"Wrong edge update. "<<ID1<<" "<<ID2<<" "<<endl; exit(1);
+                        }
+
+//                        oldW = updateData[update_i].second;
+//                        newW=oldW*0.5;
                         if(newW < 1) {
                             cout<<"New edge weight is not positive! "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
                             exit(1);
                         }
-                        if(ifDebug){
-                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
-                        }
+//                        if(ifDebug){
+//                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+//                        }
                         wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
                         ++update_i;
                     }
-
+                    cout<<"Batch "<<u<<". "<<wBatch.size()<<endl;
                     tt.start();
                     g2.H2HdecBat(wBatch);
 //                    H2HdecBat(wBatch);
                     tt.stop();
                     runT1 += tt.GetRuntime();
-                    if(ifDebug){
-                        CorrectnessCheckH2H(100);
-                    }
+                    cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
+//                    if(ifDebug){
+//                        CorrectnessCheckH2H(100);
+//                    }
                 }
-                cout<<"Average Decrease batch update Time: "<<runT1/(updateBatch*batchSize)<<" s."<<endl;
+                cout<<"Average Decrease update Time: "<<runT1/batchNumber<<" s; "<<runT1/(batchNumber*batchSize)<<" s."<<endl;
             }
             else{//for single-edge update
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     wBatch.clear();
                     ID1 = updateData[u].first.first;
                     ID2 = updateData[u].first.second;
@@ -815,47 +845,75 @@ void Graph::IndexMaintenanceH2H(int updateType, int updateBatch, bool ifBatch, i
                         CorrectnessCheckH2H(100);
                     }
                 }
-                cout<<"Average Decrease single-edge update Time: "<<runT1/updateBatch<<" s."<<endl;
+                cout<<"Average Decrease single-edge update Time: "<<runT1/batchNumber<<" s."<<endl;
             }
 
 //            break;
         }
         case 2:{
             //Increase update
-            cout<<"Update type: Increase"<<endl;
+            cout<<"\nUpdate type: Increase"<<endl;
             if(ifBatch){//for batch update
-                if(updateBatch*batchSize>updateData.size()){
-                    updateBatch=floor(updateData.size()/batchSize);
+                if(batchNumber*batchSize>updateData.size()){
+                    batchNumber=floor(updateData.size()/batchSize);
                 }
                 int update_i=0;
                 vector<pair<pair<int,int>,pair<int,int>>> wBatch;
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     wBatch.clear();
+                    uEdges.clear();
                     for(int i=0;i<batchSize;++i){
+                        update_i=u*batchSize+i;
                         ID1 = updateData[update_i].first.first;
                         ID2 = updateData[update_i].first.second;
-                        oldW = updateData[update_i].second;
-                        newW=oldW*1.5;
-                        if(ifDebug){
-                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+                        if(ID1>ID2){
+                            int temp=ID1;
+                            ID1=ID2, ID2=temp;
                         }
+                        bool ifFind=false;
+                        for(auto it=Neighbor[ID1].begin();it!=Neighbor[ID1].end();++it){
+                            if(it->first==ID2){
+                                ifFind=true;
+                                oldW=it->second;
+                                newW=2*oldW;
+                                break;
+                            }
+                        }
+
+                        if(uEdges.find(make_pair(ID1,ID2))==uEdges.end()){//if not found
+                            uEdges.insert({make_pair(ID1,ID2),newW});
+                        }else{
+                            cout<<"Wrong. Find. "<<ID1<<" "<<ID2<<" "<<newW<<" "<<uEdges[make_pair(ID1,ID2)]<<" "<<oldW <<endl;
+                            exit(1);
+                        }
+                        if(!ifFind){
+                            cout<<"Wrong edge update. "<<ID1<<" "<<ID2<<" "<<endl; exit(1);
+                        }
+
+//                        oldW = updateData[update_i].second;
+//                        newW=oldW*1.5;
+//                        if(ifDebug){
+//                            cout<<"Batch "<<u<<": "<<ID1<<" "<<ID2<<" "<<oldW<<" "<<newW<<endl;
+//                        }
                         wBatch.emplace_back(make_pair(ID1,ID2), make_pair(oldW,newW));
-                        ++update_i;
+//                        ++update_i;
                     }
+                    cout<<"Batch "<<u<<". "<<wBatch.size()<<endl;
 
                     tt.start();
                     H2HincBatMT(wBatch);
                     tt.stop();
                     runT2 += tt.GetRuntime();
+                    cout<<"Update time: "<<tt.GetRuntime()<<" s."<<endl;
                     if(ifDebug){
-//                        CorrectnessCheckH2H(100);
+                        CorrectnessCheckH2H(100);
                     }
 
                 }
-                cout<<"Average Increase batch update Time: "<<runT2/(updateBatch*batchSize)<<" s."<<endl;
+                cout<<"Average Increase update Time: "<<runT2/batchNumber<<" s; "<<runT2/(batchNumber*batchSize)<<" s."<<endl;
             }
             else {//for single-edge update
-                for(int u=0;u<updateBatch;u++){
+                for(int u=0;u<batchNumber;u++){
                     wBatch.clear();
                     ID1 = updateData[u].first.first;
                     ID2 = updateData[u].first.second;
@@ -873,7 +931,7 @@ void Graph::IndexMaintenanceH2H(int updateType, int updateBatch, bool ifBatch, i
                         CorrectnessCheckH2H(100);
                     }
                 }
-                cout<<"Average Increase single-edge update Time: "<<runT2/updateBatch<<" s."<<endl;
+                cout<<"Average Increase single-edge update Time: "<<runT2/batchNumber<<" s."<<endl;
             }
 
 
@@ -897,9 +955,8 @@ void Graph::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 
 	//NodeOrderss.clear();
 //	NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-	vector<set<int>> SCre; //SCre.clear();
-	set<int> ss; //ss.clear();
-	SCre.assign(node_num,ss);//{vertexID, set<int>}
+	vector<set<OrderCompp>> SCre; //SCre.clear();
+	SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
 	set<OrderCompp> OC; //OC.clear();//vertexID in decreasing node order
 
 	set<int> vertexIDChL; //vertexIDChL.clear();//record the vertex whose distanc labeling has changed
@@ -915,13 +972,21 @@ void Graph::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 
 		for(int i=0;i<Neighbor[a].size();i++){
 			if(Neighbor[a][i].first==b){
-				Neighbor[a][i].second=newW;
+                if(newW<Neighbor[a][i].second){
+                    Neighbor[a][i].second=newW;
+                }else{
+                    cout<<"Wrong edge update."<<endl; exit(1);
+                }
 				break;
 			}
 		}
 		for(int i=0;i<Neighbor[b].size();i++){
 			if(Neighbor[b][i].first==a){
-				Neighbor[b][i].second=newW;
+                if(newW<Neighbor[b][i].second){
+                    Neighbor[b][i].second=newW;
+                }else{
+                    cout<<"Wrong edge update."<<endl; exit(1);
+                }
 				break;
 			}
 		}
@@ -953,7 +1018,7 @@ void Graph::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 		vector<pair<int,pair<int,int>>> Vert=Tree[rank[ProID]].vert;
 		bool ProIDdisCha=false;//to see if the distance labeling of proID change or not
 		for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-			int Cid=*it; int Cw;
+			int Cid=it->x; int Cw;
 			int cidH=Tree[rank[Cid]].height-1;
 
 			map<int,int> Hnei; //Hnei.clear();
@@ -973,8 +1038,10 @@ void Graph::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 				Tree[rank[ProID]].FN[cidH]=true;
 				ProIDdisCha=true;
 				Tree[rank[ProID]].DisRe.insert(Cid);
+                Tree[rank[ProID]].cnt[cidH]=1;//new
 			}else if(Tree[rank[ProID]].dis[cidH]==Cw){
 				Tree[rank[ProID]].FN[cidH]=true;
+                Tree[rank[ProID]].cnt[cidH]+=1;//new
 			}
 
 			int hid,hidHeight,lid,lidHeight,wsum;
@@ -1004,7 +1071,9 @@ void Graph::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 							SCre[lid].insert(Cid);
 							OC.insert(OrderCompp(lid));
 						}else if(Tree[rank[lid]].vert[k].second.first==wsum){
-							Tree[rank[lid]].vert[k].second.second+=1;
+                            if(SCre[ProID].find(lid)==SCre[ProID].end()){//if not found, avoid repeated count
+                                Tree[rank[lid]].vert[k].second.second+=1;
+                            }
 						}
 
 						break;
@@ -1046,7 +1115,8 @@ void Graph::H2HdecBat(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 
 void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, map<int,int>& checkedDis){
 	bool ProIDdisCha=false;
-
+    vector<int> cntNew(line.size(),0);
+    vector<bool> flagUpdate(line.size(),false);
 	if(Tree[child].DisRe.size()!=0){
 		for(int k=0;k<Tree[child].vert.size();k++){
 			int b=Tree[child].vert[k].first, bH=Tree[rank[b]].height-1,vbW=Tree[child].vert[k].second.first;
@@ -1057,16 +1127,40 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
 						if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
 							Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
 							Tree[child].FN[i]=false;
-							ProIDdisCha=true;
-						}
+                            Tree[child].cnt[i]=1;//new
+                            ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[b]].dis[i]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];//use cntNew to redress the cnt value since the edge decrease may lead to more ways for dis (i.e., increase the cnt)
+                            }
+                        }
 					}
 					for(int i=bH+1;i<line.size();i++){
 						checkedDis.insert(make_pair(child,i));
 						if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
 							Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
 							Tree[child].FN[i]=false;
-							ProIDdisCha=true;
-						}
+                            Tree[child].cnt[i]=1;//new
+                            ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[line[i]]].dis[bH]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
+                        }
 					}
 
 				}else{//partial ancestor check
@@ -1077,8 +1171,20 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
 							if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
 								Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
 								Tree[child].FN[i]=false;
-								ProIDdisCha=true;
-							}
+                                Tree[child].cnt[i]=1;//new
+                                ProIDdisCha=true;
+                                flagUpdate[i]=true;
+                                cntNew[i]=1;
+                            }
+                            else if(Tree[child].dis[i]==vbW+Tree[rank[b]].dis[i]){
+                                cntNew[i]++;
+                                if(flagUpdate[i]) {
+                                    Tree[child].cnt[i]+=1;//new
+                                }
+                                else if(cntNew[i]>Tree[child].cnt[i]){
+                                    Tree[child].cnt[i]=cntNew[i];
+                                }
+                            }
 						}
 					}
 					for(int i=bH+1;i<line.size();i++){
@@ -1086,8 +1192,20 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
 						if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
 							Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
 							Tree[child].FN[i]=false;
-							ProIDdisCha=true;
-						}
+                            Tree[child].cnt[i]=1;//new
+                            ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[line[i]]].dis[bH]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
+                        }
 					}
 
 				}
@@ -1103,8 +1221,20 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
 						if(Tree[child].dis[i]>vbW+Tree[rank[b]].dis[i]){
 							Tree[child].dis[i]=vbW+Tree[rank[b]].dis[i];
 							Tree[child].FN[i]=false;
-							ProIDdisCha=true;
-						}
+                            Tree[child].cnt[i]=1;//new
+                            ProIDdisCha=true;
+                            flagUpdate[i]=true;
+                            cntNew[i]=1;
+                        }
+                        else if(Tree[child].dis[i]==vbW+Tree[rank[b]].dis[i]){
+                            cntNew[i]++;
+                            if(flagUpdate[i]) {
+                                Tree[child].cnt[i]+=1;//new
+                            }
+                            else if(cntNew[i]>Tree[child].cnt[i]){
+                                Tree[child].cnt[i]=cntNew[i];
+                            }
+                        }
 					}
 				}
 				for(int i=bH+1;i<line.size();i++){
@@ -1112,8 +1242,20 @@ void Graph::EachNodeProBDis5(int child,vector<int>& line,set<int>& vertexIDChL, 
 					if(Tree[child].dis[i]>vbW+Tree[rank[line[i]]].dis[bH]){
 						Tree[child].dis[i]=vbW+Tree[rank[line[i]]].dis[bH];
 						Tree[child].FN[i]=false;
-						ProIDdisCha=true;
-					}
+                        Tree[child].cnt[i]=1;//new
+                        ProIDdisCha=true;
+                        flagUpdate[i]=true;
+                        cntNew[i]=1;
+                    }
+                    else if(Tree[child].dis[i]==vbW+Tree[rank[line[i]]].dis[bH]){
+                        cntNew[i]++;
+                        if(flagUpdate[i]) {
+                            Tree[child].cnt[i]+=1;//new
+                        }
+                        else if(cntNew[i]>Tree[child].cnt[i]){
+                            Tree[child].cnt[i]=cntNew[i];
+                        }
+                    }
 				}
 			}
 		}
@@ -1138,9 +1280,8 @@ void Graph::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 
 	//NodeOrderss.clear();
 //	NodeOrderss.assign(NodeOrder.begin(),NodeOrder.end());
-	vector<set<int>> SCre; //SCre.clear(); the affected shortcut pair
-	set<int> ss; ss.clear();
-	SCre.assign(node_num,ss);//{vertexID, set<int>}
+    vector<set<OrderCompp>> SCre; //SCre.clear(); the affected shortcut pair
+    SCre.assign(node_num,set<OrderCompp>());//{vertexID, set<int>}
 	set<OrderCompp> OC; OC.clear();//the lower-order vertex of the affected shortcut, vertexID in decreasing node order
 
 	for(int k=0;k<wBatch.size();k++){
@@ -1207,7 +1348,7 @@ void Graph::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 		line.insert(line.begin(),pachid);
 
 		for(auto it=SCre[ProID].begin();it!=SCre[ProID].end();it++){
-			int Cid=*it; int Cw=OCdis[make_pair(ProID,Cid)];
+			int Cid=it->x; int Cw=OCdis[make_pair(ProID,Cid)];
 			int cidH=Tree[rank[Cid]].height-1;
 
 			map<int,int> Hnei; //Hnei.clear();
@@ -1239,91 +1380,97 @@ void Graph::H2HincBatMT(vector<pair<pair<int,int>,pair<int,int>>>& wBatch){
 				for(int k=0;k<Tree[rank[lid]].vert.size();k++){
 					if(Tree[rank[lid]].vert[k].first==Cid){
 						if(Tree[rank[lid]].vert[k].second.first==Cw+Lnei[j].second){
-							Tree[rank[lid]].vert[k].second.second-=1;
-							if(Tree[rank[lid]].vert[k].second.second<1){
-								SCre[lid].insert(Cid);
-								OC.insert(OrderCompp(lid));
-								OCdis[make_pair(lid,Cid)]=Cw+Lnei[j].second;
-							}
+                            if(SCre[ProID].find(lid)==SCre[ProID].end()) {//if not found, avoid repeated count
+                                Tree[rank[lid]].vert[k].second.second -= 1;
+                                if (Tree[rank[lid]].vert[k].second.second < 1) {
+                                    SCre[lid].insert(Cid);
+                                    OC.insert(OrderCompp(lid));
+                                    OCdis[make_pair(lid, Cid)] = Cw + Lnei[j].second;
+                                }
+                            }
 						}
 						break;
 					}
 				}
 			}
 
+            //get the new value of shortcut
+            //	cout<<Cw<<" increase to ";
+            int newCw=INF; int countwt=0;
 
-			//before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
-			if(Tree[rank[ProID]].FN[cidH]){//if the distance label is from shortcut, then the label may be affected.
-				influence=true;
-				//higher than Cid
-				for(int i=0;i<cidH;i++){
-					if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[Cid]].dis[i]){
-						Tree[rank[ProID]].cnt[i]-=1;
-					}
-				}
+            for(int i=0;i<Neighbor[ProID].size();i++){
+                if(Neighbor[ProID][i].first==Cid){
+                    newCw=Neighbor[ProID][i].second;//the weight value in the original graph
+                    countwt=1;
+                    break;
+                }
+            }
 
-				//equal to Cid
-				Tree[rank[ProID]].FN[cidH]=false;//? may still be the source
-				Tree[rank[ProID]].cnt[cidH]-=1;
+            int ssw,wtt,wid;
+            vector<int> Wnodes;
+            Wnodes.clear();
 
-				//lower than Cid
-				for(int i=cidH+1;i<Tree[rank[ProID]].dis.size();i++){
-					if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[line[i]]].dis[cidH]){
-						Tree[rank[ProID]].cnt[i]-=1;
-					}
-				}
-			}
+            if(ProID<Cid)
+                Wnodes=SCconNodesMT[ProID][Cid]; //cout<<"wid num "<<Wnodes.size()<<endl;
+            else
+                Wnodes=SCconNodesMT[Cid][ProID];
+            if(!Wnodes.empty()){
+                for(int i=0;i<Wnodes.size();i++){
+                    wid=Wnodes[i];
+                    for(int j=0;j<Tree[rank[wid]].vert.size();j++){
+                        if(Tree[rank[wid]].vert[j].first==ProID){
+                            ssw=Tree[rank[wid]].vert[j].second.first;
+                        }
+                        if(Tree[rank[wid]].vert[j].first==Cid){
+                            wtt=Tree[rank[wid]].vert[j].second.first;
+                        }
+                    }
 
-			//get the new value of shortcut
-		//	cout<<Cw<<" increase to ";
-			Cw=INF; int countwt=0;
+                    if(ssw+wtt<newCw){
+                        newCw=ssw+wtt;
+                        countwt=1;
+                    }else if(ssw+wtt==newCw){
+                        countwt+=1;
+                    }
+                }
+            }
 
-			for(int i=0;i<Neighbor[ProID].size();i++){
-				if(Neighbor[ProID][i].first==Cid){
-					Cw=Neighbor[ProID][i].second;//the weight value in the original graph
-					countwt=1;
-					break;
-				}
-			}
+            //cout<<Cw<<endl;
+            //refresh the shortcut to the new value
+            for(int i=0;i<Tree[rank[ProID]].vert.size();i++){
+                if(Tree[rank[ProID]].vert[i].first==Cid){
+                    Tree[rank[ProID]].vert[i].second.first=newCw;
+                    Tree[rank[ProID]].vert[i].second.second=countwt;
+                    break;
+                }
+            }
 
-			int ssw,wtt,wid;
-			vector<int> Wnodes;
-			Wnodes.clear();
+            if(newCw>Cw){
+                //before Cw=d(ProID,Cid) gets its new value, we first check which dis it will influence
+                if(Tree[rank[ProID]].FN[cidH]){//if the distance label is from shortcut, then the label may be affected.
+                    influence=true;
+                    //higher than Cid
+                    for(int i=0;i<cidH;i++){
+                        if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[Cid]].dis[i]){
+                            Tree[rank[ProID]].cnt[i]-=1;
+                        }
+                    }
 
-			if(ProID<Cid)
-				Wnodes=SCconNodesMT[ProID][Cid]; //cout<<"wid num "<<Wnodes.size()<<endl;
-			else
-				Wnodes=SCconNodesMT[Cid][ProID];
-			if(!Wnodes.empty()){
-				for(int i=0;i<Wnodes.size();i++){
-					wid=Wnodes[i];
-					for(int j=0;j<Tree[rank[wid]].vert.size();j++){
-						if(Tree[rank[wid]].vert[j].first==ProID){
-							ssw=Tree[rank[wid]].vert[j].second.first;
-						}
-						if(Tree[rank[wid]].vert[j].first==Cid){
-							wtt=Tree[rank[wid]].vert[j].second.first;
-						}
-					}
+                    //equal to Cid
+                    Tree[rank[ProID]].FN[cidH]=false;//? may still be the source
+                    Tree[rank[ProID]].cnt[cidH]-=1;
 
-					if(ssw+wtt<Cw){
-						Cw=ssw+wtt;
-						countwt=1;
-					}else if(ssw+wtt==Cw){
-						countwt+=1;
-					}
-				}
-			}
+                    //lower than Cid
+                    for(int i=cidH+1;i<Tree[rank[ProID]].dis.size();i++){
+                        if(Tree[rank[ProID]].dis[i]==Cw+Tree[rank[line[i]]].dis[cidH]){
+                            Tree[rank[ProID]].cnt[i]-=1;
+                        }
+                    }
+                }
+            }
 
-			//cout<<Cw<<endl;
-			//refresh the shortcut to the new value
-			for(int i=0;i<Tree[rank[ProID]].vert.size();i++){
-				if(Tree[rank[ProID]].vert[i].first==Cid){
-					Tree[rank[ProID]].vert[i].second.first=Cw;
-					Tree[rank[ProID]].vert[i].second.second=countwt;
-					break;
-				}
-			}
+
+
 		}
 
 		if(influence){
@@ -1381,7 +1528,8 @@ void Graph::eachNodeProcessIncrease1(int children, vector<int>& line, int& chang
 			//line[i]
 			for(int k=0;k<VidtoTNid[line[i]].size();k++){
 				PID=VidtoTNid[line[i]][k];
-				if(Tree[PID].height>Tree[children].height){///modified for correctness
+//				if(Tree[PID].height>Tree[children].height){///modified for correctness
+                if(Tree[PID].height>Tree[children].height && Tree[PID].vAncestor[childH] == childID){
                     if(PID>Tree.size()){
                         cout<<"PID error! "<<PID<<" "<<Tree.size()<<endl; exit(1);
                     }

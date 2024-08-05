@@ -925,10 +925,11 @@ void Graph::ODGene(int num, string filename){
     }
     OF.close();
 }
-void Graph::QueryGenerationParti(bool ifSame){
+void Graph::QueryGenerationParti(bool ifSame, string filePath){
     string partitionfile=graphfile+"_"+algoParti+"_"+to_string(partiNum);
+    partitionfile=filePath;
     string orderfile=graphfile+".orderP";
-    orderfile=graphfile+"_"+algoParti+"_"+to_string(partiNum)+"/vertex_orderMDE2";
+    orderfile=filePath+"/vertex_orderMDE2";
 
     ReadOrder(orderfile);
     GraphPartitionRead(partitionfile);//read partitions
@@ -936,10 +937,10 @@ void Graph::QueryGenerationParti(bool ifSame){
 //    ODGene(10000, graphfile+".query");//
 //    UpdateGene(10000, graphfile+".update");
 
-    ODGeneSameParti(10000,graphfile+".querySameParti");//same partition
-    ODGeneParti(10000,graphfile+".queryParti");//real-world simulation
-    ODGeneCrossParti(10000,graphfile+".queryCrossParti");//cross-partition simulation
-    exit(0);
+    ODGeneSameParti(10000,filePath+"/sameParti.query");//same partition
+    ODGeneParti(10000,filePath+"/mixParti.query");//real-world simulation
+    ODGeneCrossParti(10000,filePath+"/crossParti.query");//cross-partition simulation
+//    exit(0);
 }
 //Function of generating realistic query
 void Graph::ODGeneParti(int num, string filename){
@@ -1003,7 +1004,7 @@ void Graph::ODGeneParti(int num, string filename){
         }
     }
     cout<<"generated OD pair number "<<ODpairVec.size()<<" "<<sp_i<<" "<<cp_i<<endl;
-
+    cout<<"Writing to "<<filename<<endl;
     ofstream OF(filename);
     OF<<ODpairVec.size()<<endl;
     for(int k=0;k<ODpairVec.size();k++){
@@ -1039,7 +1040,7 @@ void Graph::ODGeneSameParti(int num, string filename){
     }
 
     cout<<"generated OD pair number "<<ODpairVec.size()<<endl;
-
+    cout<<"Writing to "<<filename<<endl;
     ofstream OF(filename);
     OF<<ODpairVec.size()<<endl;
     for(int k=0;k<ODpairVec.size();k++){
@@ -1076,7 +1077,7 @@ void Graph::ODGeneCrossParti(int num, string filename){
     }
 
     cout<<"generated OD pair number "<<ODpairVec.size()<<endl;
-
+    cout<<"Writing to "<<filename<<endl;
     ofstream OF(filename);
     OF<<ODpairVec.size()<<endl;
     for(int k=0;k<ODpairVec.size();k++){

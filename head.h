@@ -26,7 +26,7 @@
 #include <string>
 #include "Heap.h"
 //#include "labeling.hpp"
-#include <omp.h>
+//#include <omp.h>
 
 #define INF 99999999
 #define NO_Boundary 0
@@ -62,7 +62,7 @@ struct OrderComp{// maximum-first, Higher-order first
     }
 };
 
-struct OrderCompp{//prior to reture the vertex with smaller order
+struct OrderCompp{//prior to return the vertex with smaller order
     int x;
     OrderCompp(int _x){
         x=_x;
@@ -257,6 +257,8 @@ public:
 
     vector<bool> ifRepaired;
 
+    string sourcePath;
+
     ~Graph(){
         clear();
     }
@@ -363,7 +365,7 @@ public:
 
 
 	/// Index update
-    void IndexMaintenance(int updateType, int updateBatch, bool ifBatch, int batchSize);
+    void IndexMaintenance(int updateType, bool ifBatch, int batchNumber, int batchSize);
     void DecreaseSingle(int a, int b, int oldW, int newW);//process one update
     void IncreaseSingle(int a, int b, int oldW, int newW);//process one update
     void DecreaseBatch(vector<pair<pair<int,int>,pair<int,int>>>& wBatch);//process batch update
@@ -397,7 +399,7 @@ public:
     void ODGeneSameParti(int num, string filename);
     void ODGeneCrossParti(int num, string filename);
 	void UpdateGene(int num, string filename);
-    void QueryGenerationParti(bool ifSame);
+    void QueryGenerationParti(bool ifSame, string filePath);
 
 
     void WriteTreeIndexOverlay(string filename);
